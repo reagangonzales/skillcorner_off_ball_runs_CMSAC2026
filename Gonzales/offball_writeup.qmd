@@ -1,0 +1,407 @@
+---
+title: "Off-Ball Model Write Up"
+authors: "Reagan Gonzales & Chaely Raynor"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Introduction
+
+Off ball runs in soccer are one of the lesser analyzed areas of soccer analytics. In our project, we aim to answer the question, "what characteristics of an off-ball run are associated with higher threat values?"
+
+# Data
+
+Our data set comes from SkillCorner, and contains match, event, and tracking data from the 2023 MLS regular season.
+
+```{r}
+library(tidyverse)
+set.seed(1738)
+# 1. Get paths to all CSV files in the folder
+file_paths <- list.files(path = "~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Research/skillcorner_CMSAC2026/dynamic_events", 
+                         pattern = "\\.csv$", full.names = TRUE)
+
+# 2. Read and stack them into a single data frame
+#all_matches <- read_csv(file_paths, id = "source_file")
+
+cat("Total events loaded:", nrow(all_matches), "\n")
+cat("Matches loaded:", n_distinct(all_matches$match_id), "\n")
+cat("Event types:\n")
+print(table(all_matches$event_type))
+```
+
+```{r}
+# Only look at off-ball runs
+all_matches_offball <- all_matches |>
+  filter(event_type == "off_ball_run")
+cat("Total off-ball run events loaded:", nrow(all_matches_offball))
+```
+
+# Adjust + drop data
+
+```{r}
+# 0.7% of xthreat values are zeros
+sum(all_matches_offball$xthreat == 0, na.rm = TRUE) / 
+  length(na.omit(all_matches_offball$xthreat))
+# or 1761 obs
+sum(all_matches_offball$xthreat == 0, na.rm = TRUE)
+```
+
+```{r}
+# So mutate to 0.005
+all_matches_offball <- all_matches_offball |>
+  mutate(xthreat = if_else(xthreat == 0, 0.005, xthreat))
+```
+
+```{r}
+# check for missing xthreat values
+sum(is.na(all_matches_offball$xthreat)) # 6 missing, so drop
+# drop missing data
+all_matches_offball <- all_matches_offball |> drop_na(xthreat)
+```
+
+# Feature Engineering
+
+```{r}
+# Dropped off ball runs with xthreat - 0 (0.7% of data)
+# Condensed off ball run types from 10 types to 4
+# Made penetrating offball run baseline 
+# Adjust x and y scale relative to distance to attacking goal
+offball_clean <- all_matches_offball |>
+  mutate(
+    x_to_goal = 54.5 - x_end,   # 0 = at goal line, larger = further from goal
+    y_to_goal = abs(y_end),      # 0 = central, larger = wider
+  
+    run_type = case_when(event_subtype %in% c( "pulling_wide","overlap", 
+                                                    "underlap", 
+                                                    "cross_receiver") ~ "width",
+                              event_subtype %in% c("coming_short", 
+                                                   "dropping_off", 
+                                                   "support")  ~ "depth_dropping",
+                              event_subtype %in% c("run_ahead_of_the_ball", 
+                                                   "behind") ~ "penetrating",
+                              event_subtype == "pulling_half_space" ~ "half_space"),
+         run_type = factor(run_type, 
+                           levels = c("penetrating", "width", 
+                                      "depth_dropping", "half_space")))
+```
+
+```{r}
+# Check factor level counts - make sure no level has too few observations
+offball_clean |>
+  count(run_type) |>
+  mutate(pct = n / sum(n) * 100) # half space 2% of runs
+
+offball_clean |>
+  count(location_to_player_in_possession_start) |>
+  mutate(pct = n / sum(n) * 100)
+
+offball_clean |>
+  count(game_state) |>
+  mutate(pct = n / sum(n) * 100)
+```
+
+```{r}
+# Check what attacking_side values exist
+offball_clean |>
+  count(attacking_side)
+
+# Check mean x_end by attacking side
+# If SkillCorner has standardized, both sides should show similar x distributions
+offball_clean |>
+  group_by(attacking_side) |>
+  summarise(
+    mean_x_end = mean(x_end, na.rm = TRUE),
+    mean_x_start = mean(x_start, na.rm = TRUE),
+    n = n())
+```
+
+Check for missing data
+
+```{r}
+offball_clean |>
+  select(xthreat, x_end, y_end, trajectory_direction,
+         run_type, speed_avg, separation_gain,
+         delta_to_last_defensive_line_gain,
+         distance_to_player_in_possession_end,
+         location_to_player_in_possession_start,
+         game_state) |>
+  summarise(across(everything(), ~sum(is.na(.))))
+
+(4793 / 227672) * 100
+# 2% of speed avg is NAs, so drop
+offball_clean <- offball_clean |>
+  drop_na(speed_avg)
+```
+
+```{r}
+# Select relevant features
+offball_clean <- offball_clean |>
+  select(xthreat, x_to_goal, y_to_goal, trajectory_direction,
+         run_type, speed_avg, separation_gain,
+         delta_to_last_defensive_line_gain,
+         distance_to_player_in_possession_end,
+         location_to_player_in_possession_start,
+         match_id,
+         n_simultaneous_runs,
+         game_state)
+```
+
+# EDA
+
+```{r}
+# Distribution of xthreat
+offball_clean |>
+  ggplot(aes(x=xthreat)) +
+  geom_histogram()
+```
+
+```{r}
+# mean xthreat values for each offball run type
+offball_clean |>
+  group_by(event_subtype) |>
+  summarize(mean_xthreat_rate = mean(xthreat, na.rm = TRUE), .groups = 'drop') |>
+  ggplot(aes(x= fct_reorder(event_subtype, desc(mean_xthreat_rate)), 
+             y = mean_xthreat_rate)) +
+  geom_col() +
+  labs(x = "", y = "Mean Xthreat Rate") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+# Model Assumptions
+
+- **Bounded Outcome:** The dependent variable must be continuous and strictly greater than 0 and strictly less than 1.
+
+- **Beta Distribution:** The response variable follows a conditional Beta distribution, which natively handles skewness and heteroskedasticity.
+
+- **Linearity of the Mean:** The relationship between the predictors and a transformed mean of the response (e.g., using a logit link function) is linear.
+
+- **Appropriate Link & Homogeneity:** Deviance residuals should be homogeneous (constant variance) when plotted against the linear predictor, and link functions must be correctly specified.
+
+# Modeling
+
+```{r}
+library(betareg)
+# cross validation set up
+set.seed(25)
+N_FOLDS <- 5
+games_folds <- offball_clean |> 
+  distinct(match_id) |>
+  mutate(fold = sample(rep(1:N_FOLDS, length.out = n())))
+
+offball_clean <- offball_clean |> 
+  left_join(games_folds, by = join_by(match_id))
+
+# cross validation
+ob_cv <- function(x) {
+  ob_train <- offball_clean |> filter(fold != x)
+  ob_test <- offball_clean |> filter(fold == x)
+  
+  m1_beta_fit <- betareg(xthreat ~ x_to_goal + y_to_goal,
+                         data = ob_train,
+                         link = "logit")
+  m2_beta_fit <- betareg(xthreat ~ x_to_goal + y_to_goal + run_type + speed_avg,
+                         data = ob_train,
+                         link = "logit")
+  m3_beta_fit <- betareg(xthreat ~ x_to_goal + y_to_goal + run_type + 
+                           speed_avg + separation_gain +
+                           delta_to_last_defensive_line_gain,
+                         data = ob_train,
+                         link = "logit")
+  m4_beta_fit <- betareg(xthreat ~ x_to_goal + y_to_goal + run_type +
+                           speed_avg + separation_gain + 
+                           delta_to_last_defensive_line_gain +
+                           distance_to_player_in_possession_end +
+                           location_to_player_in_possession_start +
+                           n_simultaneous_runs + game_state,
+                         data = ob_train,
+                         link = "logit")
+  
+  ob_out <- tibble(
+    m1_pred = predict(m1_beta_fit, newdata = ob_test, type = "response"),
+    m2_pred = predict(m2_beta_fit, newdata = ob_test, type = "response"),
+    m3_pred = predict(m3_beta_fit, newdata = ob_test, type = "response"),
+    m4_pred = predict(m4_beta_fit, newdata = ob_test, type = "response"),
+    test_actual = ob_test$xthreat,
+    test_fold = x
+  )
+  return(ob_out)  
+}
+
+ob_preds <- map(1:N_FOLDS, ob_cv) |> 
+  list_rbind()
+```
+
+```{r}
+# cv rmse + mae
+ob_preds |>
+  pivot_longer(
+    cols = m1_pred:m4_pred,
+    names_to = "model",
+    values_to = "test_pred") |>
+  group_by(model, test_fold) |>
+  summarize(
+    rmse = sqrt(mean((test_pred - test_actual)^2)),
+    mae = mean(abs(test_pred - test_actual)),
+    .groups = "drop") |>
+  group_by(model) |>
+  summarize(
+    cv_rmse = mean(rmse),
+    se_rmse = sd(rmse) / sqrt(N_FOLDS),
+    cv_mae = mean(mae),
+    se_mae = sd(mae) / sqrt(N_FOLDS))
+```
+
+Model 4 performed best (lowest RMSE and MAE)
+
+```{r}
+# CV best beta model with linear regression
+# cross validation set up
+set.seed(25)
+N_FOLDS <- 5
+games_folds <- offball_clean |> 
+  distinct(match_id) |>
+  mutate(fold = sample(rep(1:N_FOLDS, length.out = n())))
+
+offball_clean <- offball_clean |> 
+  left_join(games_folds, by = join_by(match_id))
+
+# cross validation
+ob_cv <- function(x) {
+  ob_train <- offball_clean |> filter(fold != x)
+  ob_test <- offball_clean |> filter(fold == x)
+  
+  m4_beta_fit <- betareg(xthreat ~ x_to_goal + y_to_goal + run_type +
+                           speed_avg + separation_gain + 
+                           delta_to_last_defensive_line_gain +
+                           distance_to_player_in_possession_end +
+                           location_to_player_in_possession_start +
+                           n_simultaneous_runs + game_state,
+                         data = ob_train,
+                         link = "logit")
+  m5_linear_fit <- lm(log(xthreat) ~ x_to_goal + y_to_goal + run_type +
+                        speed_avg + separation_gain + 
+                        delta_to_last_defensive_line_gain +
+                        distance_to_player_in_possession_end +
+                        location_to_player_in_possession_start +
+                        n_simultaneous_runs + game_state,
+                      data = ob_train)
+  
+  ob_out <- tibble(
+    m4_pred = predict(m4_beta_fit, newdata = ob_test, type = "response"),
+    m5_pred = predict(m5_linear_fit, newdata = ob_test, type = "response"),
+    test_actual = ob_test$xthreat,
+    test_fold = x
+  )
+  return(ob_out)  
+}
+
+ob_preds <- map(1:N_FOLDS, ob_cv) |> 
+  list_rbind()
+```
+
+```{r}
+# cv linear and beta
+ob_preds |>
+  pivot_longer(
+    cols = m4_pred:m5_pred,
+    names_to = "model",
+    values_to = "test_pred") |>
+  group_by(model, test_fold) |>
+  summarize(
+    rmse = sqrt(mean((test_pred - test_actual)^2)),
+    mae = mean(abs(test_pred - test_actual)),
+    .groups = "drop") |>
+  group_by(model) |>
+  summarize(
+    cv_rmse = mean(rmse),
+    se_rmse = sd(rmse) / sqrt(N_FOLDS),
+    cv_mae = mean(mae),
+    se_mae = sd(mae) / sqrt(N_FOLDS))
+```
+
+Model 4 still performs better
+
+```{r}
+# beta GAM vs beta regression
+library(mgcv)
+# cross validation set up
+set.seed(25)
+N_FOLDS <- 5
+games_folds <- offball_clean |> 
+  distinct(match_id) |>
+  mutate(fold = sample(rep(1:N_FOLDS, length.out = n())))
+
+offball_clean <- offball_clean |> 
+  left_join(games_folds, by = join_by(match_id))
+
+# cross validation
+ob_cv <- function(x) {
+  ob_train <- offball_clean |> filter(fold != x)
+  ob_test <- offball_clean |> filter(fold == x)
+  
+  m4_beta_fit <- betareg(xthreat ~ x_to_goal + y_to_goal + run_type +
+                           speed_avg + separation_gain + 
+                           delta_to_last_defensive_line_gain +
+                           distance_to_player_in_possession_end +
+                           location_to_player_in_possession_start +
+                           n_simultaneous_runs + game_state,
+                         data = ob_train,
+                         link = "logit")
+  m5_beta_gam <- gam(xthreat ~ s(x_to_goal) + s(y_to_goal) + run_type + s(speed_avg) + 
+                       s(separation_gain) + s(delta_to_last_defensive_line_gain) +
+                       s(distance_to_player_in_possession_end) + 
+                       location_to_player_in_possession_start + 
+                       s(n_simultaneous_runs, k=5) +
+                       game_state,
+                     family = betar(link = "logit"),
+                     method = "REML", # more stable solution than default
+                     data = ob_train)
+  
+  ob_out <- tibble(
+    m4_pred = predict(m4_beta_fit, newdata = ob_test, type = "response"),
+    m5_pred = predict(m5_beta_gam, newdata = ob_test, type = "response"),
+    test_actual = ob_test$xthreat,
+    test_fold = x
+  )
+  return(ob_out)  
+}
+
+ob_preds <- map(1:N_FOLDS, ob_cv) |> 
+  list_rbind()
+```
+
+```{r}
+# cv beta reg and beta gam
+ob_preds |>
+  pivot_longer(
+    cols = m4_pred:m5_pred,
+    names_to = "model",
+    values_to = "test_pred") |>
+  group_by(model, test_fold) |>
+  summarize(
+    rmse = sqrt(mean((test_pred - test_actual)^2)),
+    mae = mean(abs(test_pred - test_actual)),
+    .groups = "drop") |>
+  group_by(model) |>
+  summarize(
+    cv_rmse = mean(rmse),
+    se_rmse = sd(rmse) / sqrt(N_FOLDS),
+    cv_mae = mean(mae),
+    se_mae = sd(mae) / sqrt(N_FOLDS))
+```
+
+# Interpretations
+
+Evaluating a beta regression model in R (typically fit with the `betareg` package) requires checking **goodness-of-fit**, **predictive accuracy**, and **model assumptions** since data is bounded between 0 and 1. \[[1](https://topmodels.r-forge.r-project.org/betareg/vignettes/betareg.html), [2](https://r-statistics.co/Beta-Regression-in-R.html), [3](https://www.youtube.com/watch?v=oR5W1r4cKmA&t=17)\]
+
+1.  **Pseudo R²:** Standard R² doesn't apply. Instead, use the R² returned by `summary(model)` which reflects the squared correlation between the linear predictor and the transformed response. \[[1](https://r-statistics.co/Beta-Regression-in-R.html)\]
+
+2.  **Information Criteria:** Compare models using `AIC(model)` or `BIC(model)`. Lower values indicate a better balance of fit and complexity.
+
+3.  **Residual Diagnostics:** Use the `plot(model)` function to check assumptions. Specifically, examine the **worm plot** or **Q-Q plot** of quantile residuals to ensure errors are normally distributedn
+
+# Discussion/conclusion
+
+# Limitations & Future Work

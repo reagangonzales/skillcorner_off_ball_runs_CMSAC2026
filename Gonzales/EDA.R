@@ -9,11 +9,13 @@ file_paths <- list.files(path = "~/Library/Mobile Documents/com~apple~CloudDocs/
 
 # Only look at off-ball runs
 all_matches_offball <- all_matches |>
-  filter(event_type == "off_ball_run") |>
-  filter(is_player_possession_start_matched == TRUE & is_player_possession_end_matched == TRUE)
+  filter(event_type == "off_ball_run")
 
 # 0.7% of xthreat values are zeros
 sum(all_matches_offball$xthreat == 0, na.rm = TRUE) / length(na.omit(all_matches_offball$xthreat))
+# So drop from selected dataset
+all_matches_offball <- all_matches_offball |>
+  filter(xthreat > 0)
 
 # Distribution of xthreat
 all_matches_offball |>
