@@ -133,6 +133,9 @@ offball_clean |>
 # 2% of speed avg is NAs, so drop
 offball_clean <- offball_clean |>
   drop_na(speed_avg)
+
+# total obs for modeling
+nrow(offball_clean)
 ```
 
 ```{r}
