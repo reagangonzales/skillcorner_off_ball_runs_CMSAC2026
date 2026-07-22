@@ -2,134 +2,190 @@
 title: "Increasing Offensive Threat With Off Ball Runs"
 author:
   - name: "Reagan Gonzales"
-    institution: "Smith College"
+    affiliation: "Smith College"
   - name: "Chaely Raynor"
-    institution: "Saint Vincent College"
+    affiliation: "Saint Vincent College"
 format:
   revealjs:
     slide-number: true
+    page-layout: full
 theme: serif
 logo: images/cmu_stats.jpg
 ---
 
 ## What is an off ball run?
-Definition: An off ball run is...
 
 
-::: {.panel-tabset}
+![](images/cross_receiver.gif){fig-align="center"}
 
-### Cross Receiver Run
-![](images/cross_receiver.gif){width=70%}
-
-### Run Ahead of the Ball
-![](images/run_ahead.gif){width=70%}
-
-### Support
-![](images/support.gif){width=70%}
-
-### Pulling Wide
-![](images/pulling_wide.gif){width=70%}
-
-### Overlap
-![](images/overlap.gif){width=70%}
-
-### Underlap
-![](images/underlap.gif){width=70%}
-
-### Third-Man Run
-![](images/third_man.gif){width=70%}
-
-### Blindside Run
-![](images/blindside.gif){width=70%}
-
-### Depth Run
-![](images/depth.gif){width=70%}
-
+::: {.footer}
+Cross receiver run example
 :::
 
-
-
-
-## Main Question
+# Main Question
 What characteristics of an off ball run are associated with higher offensive threat?
+
+
+## Importance
+- Players who increase offensive threat are an asset to their team
+- Teams that exceed expected threat
+
 
 ## Data
 2023 MLS Regular Season Event Data
+- 520 matches
+- 
 ![](images\data_sample.png)
-Source: SkillCorner
-
-
-## Threat - Calculated by SkillCorner
-![](images\xthreat_hist.png)
 
 
 
-## EDA plot
-How is xthreat distributed among run types
+  
+  
+Source:  
+  ![](images/skillcorner-logo.png)
+
+
+## Filtering
+Originally, ~ 240,000 observations
+
+- Dropped missing values in xthreat & speed average
+- Dropped runs that are not in offensive half
+
+Total remaining: ~ 170,000 obs for modeling
+
+## Feature Engineering
+::: columns
+::: {.column width=55%}
+![](images\mean_xthreat.png)
+
+:::
+
+::: {.column width=45%}
+
+- Condensed 10 run types into 5 groups
+- Calculated x and y to goal distances 
+  - x to goal $= 54.5 - x$
+  - y to goal $= |y|$
+
+:::
+:::
 
 ## Features of Off Ball Runs
-- Location on the field (x,y coordinates)
+- Spatial baseline: Location on the field (x,y coordinates)
 - Run characteristics: run type, average speed
-- Spatial features: distance to player in possession, 
+- Space Creation: location to player in possession, distance to defensive line gain,
+                  separation gain
 - Game context: Game state, Number of simultaneous runs
 
-## Beta Regression
-used for proportion response variable (0,1)
 
+## Beta Distribution
+::: columns
+::: {.column width="40%"}
+![](images/beta_dist.png)
+:::
+::: {.column width="60%"}
+![](images/xthreat_hist_final.png)
+:::
+:::
 
-Models
+Used for proportion data (0,1)
 
+## Beta GLM Regression
+::: {.incremental}
+Models - 5 fold cross validation
 
- - baseline using (x,y) coordinates
+ - baseline using (x,y) distances to goal
  - baseline + run characteristics
  - baseline + run characteristics + spatial features
  - baseline + run characteristics + spatial features + game context
+ 
+:::
 
+. . . 
+
+Best perfomer: Full Model
+
+## Linear model using log(Xthreat)
+::: columns
+::: {.column width="45%"}
+![](images/normal_dist.png)
+:::
+::: {.column width=55%}
+![](images/log_xthreat_hist.png)
+:::
+
+:::
+
+Linear performed worse than beta model in 5-fold CV
+
+## Beta GLM vs Beta GAM
+GAM model accounts for more flexibility 
 
 ## Choosing the best model
-Cross validation between beta models
-Beta model vs linear model that uses a log transform
+![](images/model_comparison.png){fig-align="center"}
+
+# Inference
+
+## Smooth Terms
+![](images/smooth_terms.png){fig-align="center"}
+
+## Parametric Terms
+![](images/parametric.png){fig-align="center"}
 
 
-## Inference
-These characteristics are the most important
+## Threat Generation Metrics
+$xTOE = (residual) / (expected)$
 
+## Player Threat
+![](images/player_metric.png)
 
-## Limitations
-A lot of data to work with
-Our model has to trust how well their xthreat model is calculated
+## Team Threat
+![](images/team_metric.png){fig-align="center"}
 
-## Future Work
+## Conclusions
+Write conclusions here
+
+## Discussions
+
+**Limitations**
+
+- Our model is dependent on their xthreat model
+- Xthreat is not a robust measure of run effectiveness
+- Only looking at one season of data
+
+. . . 
+
+**Future Work**
+
 - Adding SkillCorner's tracking data
-- GAM model
+- Compare our best model to an XGBoost model to see if there is more hidden flexibility
 
 
-## Appendix
+# Appendix
 
-## SkillCorner descriptions
-screenshot skillcorner descriptions for our variables
+## Off Ball Run Definition
+![](images/obr_def.png){fig-align="center"}
+
+::: {.footer}
+Source: (https://skillcorner.crunch.help/en/glossaries/off-ball-run-dynamic-events)
+:::
+
+## Xthreat definition
+![](images/xthreat_def.png)
 
 
+::: {.footer}
 
-## Quarto
+Definition taken from [Xthreat definition](https://skillcorner.crunch.help/en/models-general-concepts/threat)
 
-Quarto enables you to weave together content and executable code into a finished presentation. To learn more about Quarto presentations see <https://quarto.org/docs/presentations/>.
+All variable descriptions available at [this link](https://26560301.fs1.hubspotusercontent-eu1.net/hubfs/26560301/Guides/Dynamic%20Events/20260223%20-%20Dynamic%20Events%20CSV%20Specifications.pdf)
 
-## Bullets
+:::
 
-When you click the **Render** button a document will be generated that includes:
+## Run Type Categories
+![](images/run_types.png)
 
-- Content authored with markdown
-- Output from executable code
-
-## Code
-
-When you click the **Render** button a presentation will be generated that includes both content and the output of embedded code. You can embed code like this:
-
-```{r}
-1 + 1
-```
 
 ## Things to Do to fix these slides
 - Add Charlotte FC logo on title page
-- Maybe add SkillCorner logo on data slide
+- include importance

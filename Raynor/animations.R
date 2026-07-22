@@ -5,6 +5,8 @@
 #load in one game
 library(tidyverse)
 library(jsonlite)
+library(sportyR)
+library(gganimate)
 filepath = "C:\\Users\\chael\\OneDrive - Saint Vincent College\\CMSACamp\\Capstone Project\\"
 events = read_csv(paste0(filepath, "1832186_dynamic_events.csv"))
 tracking <- stream_in(file(paste0(filepath,
@@ -75,62 +77,62 @@ cross_receiver_anim <- animate_off_ball_run(cross_event, tracking)
 #dropping off run animation
 droppingoff_event <- events |>
   filter(event_subtype == "dropping_off") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 dropping_off_anim <- animate_off_ball_run(droppingoff_event, tracking)
 
 #underlap run animation
 underlap_event <- events |>
   filter(event_subtype == "underlap") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 underlap_anim <- animate_off_ball_run(underlap_event, tracking)
 
 #pulling wide run animation
 pullingwide_event <- events |>
   filter(event_subtype == "pulling_wide") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 pulling_wide_anim <- animate_off_ball_run(pullingwide_event, tracking)
 
 #run_ahead_of_the_ball off run animation
 ahead_event <- events |>
   filter(event_subtype == "run_ahead_of_the_ball") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 ahead_anim <- animate_off_ball_run(ahead_event, tracking)
 
 #coming short run animation
 comingshort_event <- events |>
   filter(event_subtype == "coming_short") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 coming_short_anim <- animate_off_ball_run(comingshort_event, tracking)
 
 #pulling half space run animation
 pullinghs_event <- events |>
   filter(event_subtype == "pulling_half_space") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 pullinghs_anim <- animate_off_ball_run(pullinghs_event, tracking)
 
 #support run animation
 support_event <- events |>
   filter(event_subtype == "support") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 support_anim <- animate_off_ball_run(support_event, tracking)
 
 #behind run animation
 behind_event <- events |>
   filter(event_subtype == "behind") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 behind_anim <- animate_off_ball_run(behind_event, tracking)
 
 #overlap run animation
 overlap_event <- events |>
   filter(event_subtype == "overlap") |>
-  slice_sample(1)
+  slice_sample(n=1)
 
 overlap_anim <- animate_off_ball_run(overlap_event, tracking)
